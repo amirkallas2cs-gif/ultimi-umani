@@ -34,6 +34,10 @@ jobs:
       BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
       ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
       ELEVENLABS_VOICE_ID: ${{ vars.ELEVENLABS_VOICE_ID }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_VOICE: ${{ vars.GEMINI_VOICE }}
+      GEMINI_TTS_MODEL: ${{ vars.GEMINI_TTS_MODEL }}
+      GEMINI_STYLE: ${{ vars.GEMINI_STYLE }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
