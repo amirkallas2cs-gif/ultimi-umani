@@ -38,7 +38,8 @@ async function elevenlabs(text, file) {
 // Come recita ULTIMA (si può cambiare con la variabile GEMINI_STYLE)
 const GEMINI_STYLE = process.env.GEMINI_STYLE ||
   "Leggi in italiano come una voce sintetica di un'intelligenza artificiale: robotica, fredda, piatta e monotona, " +
-  'senza emozioni e senza calore umano, articolazione precisa, ritmo sostenuto e veloce, pause minime tra le frasi';
+  'senza emozioni e senza calore umano, articolazione precisa, ritmo sostenuto e veloce, pause minime tra le frasi. ' +
+  'Pronuncia italiana standard e neutra, dizione da doppiatore, nessun accento o inflessione regionale';
 
 // Robotizzazione per singola frase (Gemini, ElevenLabs): accelera e appiattisce l'intonazione come un vocoder,
 // mescolando la voce robotica a quella pulita perché resti capibile.
@@ -88,7 +89,7 @@ async function geminiOnce(text, file) {
       contents: [{ parts: [{ text: `${GEMINI_STYLE}: ${text}` }] }],
       generationConfig: {
         responseModalities: ['AUDIO'],
-        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: process.env.GEMINI_VOICE || 'Kore' } } },
+        speechConfig: { languageCode: 'it-IT', voiceConfig: { prebuiltVoiceConfig: { voiceName: process.env.GEMINI_VOICE || 'Kore' } } },
       },
     }),
   });
