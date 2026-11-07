@@ -13,8 +13,9 @@ if (!ep) {
   process.exit(1);
 }
 
-fs.rmSync('out', { recursive: true, force: true });
+fs.rmSync('out/frames', { recursive: true, force: true });
 fs.mkdirSync('out/frames', { recursive: true });
+const voice = fs.existsSync('out/voice.json') ? JSON.parse(fs.readFileSync('out/voice.json', 'utf8')) : null;
 
 const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 // 720x1280 a densità 1,5 = fotogrammi 1080x1920
@@ -22,7 +23,10 @@ const page = await browser.newPage({ viewport: { width: 720, height: 1280 }, dev
 page.on('pageerror', e => console.error('Errore nella pagina:', e.message));
 await page.goto(`${SITE}/?render=1&day=${day}`, { waitUntil: 'networkidle' });
 await page.waitForFunction(() => window.__reelReady === true, null, { timeout: 90000 });
-const duration = await page.evaluate(() => window.__reelDuration);
+// le inquadrature durano quanto serve alla voce narrante
+const duration = voice?.durations?.length
+  ? await page.evaluate(ds => window.__setDurations(ds), voice.durations)
+  : await page.evaluate(() => window.__reelDuration);
 const total = Math.round(duration * FPS);
 
 const t0 = Date.now();

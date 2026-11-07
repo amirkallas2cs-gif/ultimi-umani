@@ -746,11 +746,15 @@ const ease=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
 const vA=new THREE.Vector3(),vB=new THREE.Vector3(),tA=new THREE.Vector3(),tB=new THREE.Vector3();
 let lastShot=-1;
 function reelCam(now){
-  const t=(now-reelT0)/1000;const i=Math.floor(t/SHOT)%shots.length;const k=ease(Math.min(1,(t%SHOT)/SHOT));
-  const a=shots[i],b=shots[(i+1)%shots.length];
+  // ogni inquadratura può avere una durata propria (sh.dur), es. per far finire la voce narrante
+  const durs=shots.map(sh=>sh.dur||SHOT),total=durs.reduce((a,b)=>a+b,0);
+  let t=((now-reelT0)/1000)%total,i=0;
+  while(i<durs.length-1&&t>=durs[i]){t-=durs[i];i++;}
+  const d=durs[i],a=shots[i],b=shots[(i+1)%shots.length];
   vA.fromArray(a.p);vB.fromArray(b.p);tA.fromArray(a.t);tB.fromArray(b.t);
-  // resta sull'inquadratura per 60% del tempo, poi transita
-  const m=Math.max(0,(k-.6)/.4);
+  // resta sull'inquadratura, poi transita nell'ultimo secondo e mezzo (non dopo l'ultima, nel video)
+  const tr=Math.min(1.4,d*.4),last=manual&&i===shots.length-1;
+  const m=last?0:Math.min(1,Math.max(0,(t-(d-tr))/tr));
   camera.position.lerpVectors(vA,vB,ease(m));controls.target.lerpVectors(tA,tB,ease(m));camera.lookAt(controls.target);
   if(i!==lastShot){lastShot=i;capEl.innerHTML=typeof shots[i].cap==='function'?shots[i].cap():shots[i].cap;capEl.classList.remove('glitch');void capEl.offsetWidth;capEl.classList.add('glitch');}
 }
@@ -813,6 +817,7 @@ async function startRender(day){
   manual=true; // la pipeline disegna un fotogramma alla volta con __renderFrame
   window.__reelDuration=shots.length*SHOT;
   window.__renderFrame=sec=>{step(reelT0+sec*1000,1/30,sec);return true;};
+  window.__setDurations=ds=>{ds.forEach((d,k)=>{if(shots[k]&&d>0)shots[k].dur=d;});window.__reelDuration=shots.reduce((x,sh)=>x+(sh.dur||SHOT),0);return window.__reelDuration;};
   window.__reelReady=true;
 }
 if(QS.get('render')==='1'){startRender(QS.get('day')||'0');}

@@ -32,6 +32,8 @@ jobs:
     timeout-minutes: 45
     env:
       BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+      ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+      ELEVENLABS_VOICE_ID: ${{ vars.ELEVENLABS_VOICE_ID }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -40,6 +42,22 @@ jobs:
       - run: npm install --prefix pipeline
       - run: npx --prefix pipeline playwright install --with-deps chromium
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      # Voce narrante gratuita (Piper, voce italiana "paola"), usata se ElevenLabs non è configurato
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@v4
+        with:
+          path: pipeline/voices
+          key: piper-paola-medium-v1
+      - name: Voce Piper
+        run: |
+          pip install piper-tts==1.2.0
+          mkdir -p pipeline/voices
+          base=https://huggingface.co/rhasspy/piper-voices/resolve/main/it/it_IT/paola/medium
+          [ -f pipeline/voices/it_IT-paola-medium.onnx ] || curl -sSL -o pipeline/voices/it_IT-paola-medium.onnx $base/it_IT-paola-medium.onnx
+          [ -f pipeline/voices/it_IT-paola-medium.onnx.json ] || curl -sSL -o pipeline/voices/it_IT-paola-medium.onnx.json $base/it_IT-paola-medium.onnx.json
+      - run: node pipeline/voice.mjs
       - run: node pipeline/render.mjs
       - run: node pipeline/encode.mjs
       - run: node pipeline/upload.mjs
