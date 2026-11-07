@@ -808,9 +808,12 @@ async function startRender(day){
     }
   }catch(e){}
   await loadState();
-  window.__reelDuration=shots.length*SHOT;
+  try{await document.fonts.ready;}catch(e){}
   setReel(true);
-  setTimeout(()=>{window.__reelDone=true;},shots.length*SHOT*1000);
+  manual=true; // la pipeline disegna un fotogramma alla volta con __renderFrame
+  window.__reelDuration=shots.length*SHOT;
+  window.__renderFrame=sec=>{step(reelT0+sec*1000,1/30,sec);return true;};
+  window.__reelReady=true;
 }
 if(QS.get('render')==='1'){startRender(QS.get('day')||'0');}
 else if(location.hash==='#reel')setReel(true);
@@ -822,8 +825,14 @@ function resize(){const w=innerWidth,h=innerHeight;renderer.setSize(w,h,false);c
 addEventListener('resize',resize);resize();
 
 const clock=new THREE.Clock();const tmp=new THREE.Vector3();
+let manual=false;
 function loop(now){
+  if(manual)return;
   const dt=Math.min(clock.getDelta(),.05),t=clock.elapsedTime;
+  step(now,dt,t);
+  requestAnimationFrame(loop);
+}
+function step(now,dt,t){
   // fuoco
   const fl=1+Math.sin(t*13)*.08+Math.sin(t*7.3)*.06;
   flame.scale.set(fl,1+Math.sin(t*9)*.15,fl);flame2.scale.y=1+Math.sin(t*11)*.2;fire.intensity=2.2+Math.sin(t*15)*.25+Math.sin(t*6)*.2;
@@ -831,7 +840,7 @@ function loop(now){
   // ULTIMA guarda la telecamera, con glitch
   ultima.lookAt(camera.position);
   ring.rotation.z+=dt*.2;ring2.rotation.z-=dt*.35;
-  const glitch=Math.random()<.015;
+  const glitch=manual?(Math.sin(t*7.1)>.985&&Math.sin(t*3.3)>.2):Math.random()<.015;
   iris.scale.setScalar(glitch?rr(.7,1.3):1+Math.sin(t*1.7)*.05);
   ultima.position.x=glitch?rr(-.6,.6):0;
   eyeLight.intensity=glitch?3:1.3+Math.sin(t*2)*.2;
@@ -860,7 +869,6 @@ function loop(now){
     const place=(el,v,disp)=>{tmp.copy(v).project(camera);const vis=tmp.z<1&&Math.abs(tmp.x)<1.05&&Math.abs(tmp.y)<1.05;el.style.display=vis?disp:'none';if(vis){el.style.left=((tmp.x+1)/2*w)+'px';el.style.top=((1-tmp.y)/2*h)+'px';}};
     tagged.forEach(o=>{o.obj.getWorldPosition(tmp);tmp.y+=2.4;place(o.el,tmp.clone(),'block');});
     PINS.forEach(pn=>place(pn.el,pn.v,'flex'));}
-  requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
 })();

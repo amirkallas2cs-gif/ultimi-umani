@@ -1,9 +1,11 @@
-// Registra il Reel del giorno dalla modalità render del sito (Chromium senza schermo).
+// Disegna il Reel del giorno un fotogramma alla volta (30 fps) dalla modalità render del sito.
+// Ogni fotogramma viene completato prima della cattura: il video finale è fluido anche senza scheda grafica.
 import fs from 'node:fs';
 import { chromium } from 'playwright';
 import { SITE, need, currentDay, episode, logNotion } from './lib.mjs';
 
 need('SITE_URL');
+const FPS = 30;
 const day = await currentDay();
 const ep = await episode(day);
 if (!ep) {
@@ -11,23 +13,25 @@ if (!ep) {
   process.exit(1);
 }
 
-fs.mkdirSync('out', { recursive: true });
-const W = 720, H = 1280; // poi ffmpeg porta a 1080x1920
+fs.rmSync('out', { recursive: true, force: true });
+fs.mkdirSync('out/frames', { recursive: true });
+
 const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
-const context = await browser.newContext({ viewport: { width: W, height: H }, recordVideo: { dir: 'out', size: { width: W, height: H } } });
-const page = await context.newPage();
-const tOpen = Date.now();
-await page.goto(`${SITE}/?render=1&day=${day}`, { waitUntil: 'load' });
-await page.waitForFunction(() => window.__reelDuration > 0, null, { timeout: 60000 });
-const lead = (Date.now() - tOpen) / 1000;
+// 720x1280 a densità 1,5 = fotogrammi 1080x1920
+const page = await browser.newPage({ viewport: { width: 720, height: 1280 }, deviceScaleFactor: 1.5 });
+page.on('pageerror', e => console.error('Errore nella pagina:', e.message));
+await page.goto(`${SITE}/?render=1&day=${day}`, { waitUntil: 'networkidle' });
+await page.waitForFunction(() => window.__reelReady === true, null, { timeout: 90000 });
 const duration = await page.evaluate(() => window.__reelDuration);
-await page.waitForFunction(() => window.__reelDone === true, null, { timeout: (duration + 30) * 1000, polling: 250 });
-await page.waitForTimeout(400);
-const video = page.video();
-await page.close();
-await context.close();
-fs.renameSync(await video.path(), 'out/raw.webm');
+const total = Math.round(duration * FPS);
+
+const t0 = Date.now();
+for (let i = 0; i < total; i++) {
+  await page.evaluate(sec => window.__renderFrame(sec), i / FPS);
+  await page.screenshot({ path: `out/frames/f${String(i).padStart(5, '0')}.jpg`, type: 'jpeg', quality: 92 });
+  if (i % 150 === 0) console.log(`Fotogramma ${i}/${total} (${((Date.now() - t0) / 1000).toFixed(0)}s)`);
+}
 await browser.close();
 
-fs.writeFileSync('out/meta.json', JSON.stringify({ day, lead, duration, title: ep.title, caption: ep.caption || '' }));
-console.log(`Registrato giorno ${day}: ${duration}s (attacco a ${lead.toFixed(1)}s)`);
+fs.writeFileSync('out/meta.json', JSON.stringify({ day, fps: FPS, duration, frames: total, title: ep.title, caption: ep.caption || '', shot_seconds: ep.script?.shot_seconds || 4.2 }));
+console.log(`Giorno ${day}: ${total} fotogrammi in ${((Date.now() - t0) / 1000).toFixed(0)}s`);
