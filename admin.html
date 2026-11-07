@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Rifugio · Admin</title>
+<style>
+:root{--bg:#0d1216;--panel:#141b20;--line:#2a353c;--ash:#d9dcd6;--dust:#8b958f;--moss:#7fb069;--ember:#ff9b42;--danger:#ff5a5a;--ultima:#38e8ff;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ash);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;padding-block:20px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+main{max-width:980px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+h1{font-size:22px;margin:0}
+h2{font-size:15px;margin:0 0 10px;text-transform:uppercase;letter-spacing:.08em;color:var(--dust)}
+section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--dust)}
+input,select,textarea,button{font:inherit;color:var(--ash);background:#0b1013;border:1px solid var(--line);border-radius:7px;padding:8px 10px}
+button{cursor:pointer}
+button.go{background:var(--moss);color:#0d1216;border-color:var(--moss);font-weight:600}
+button.no{border-color:var(--danger);color:#ffd0d0}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--ultima);outline-offset:2px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end}
+.wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--dust);font-weight:500;font-size:12px}
+[hidden]{display:none!important}
+.stack{display:flex;flex-direction:column;gap:16px}
+.msg{min-height:1.4em;color:var(--ember)}
+code{font-family:ui-monospace,Menlo,monospace;color:var(--ember)}
+</style>
+</head>
+<body>
+<main>
+  <h1>Rifugio · pannello admin</h1>
+
+  <section id="login">
+    <h2>Accesso</h2>
+    <form id="loginForm" class="row">
+      <label style="flex:1;min-width:220px">Token admin<input id="token" type="password" autocomplete="current-password" required></label>
+      <button class="go" type="submit">Entra</button>
+    </form>
+    <p class="msg" id="loginMsg"></p>
+  </section>
+
+  <div id="app" class="stack" hidden>
+    <section>
+      <h2>Verifica codice</h2>
+      <form id="verifyForm" class="row">
+        <label style="flex:1;min-width:180px">Codice dal commento<input id="code" placeholder="GU-XXXXX" autocomplete="off" required></label>
+        <button class="go" type="submit">Verifica</button>
+      </form>
+      <p class="msg" id="verifyMsg"></p>
+    </section>
+
+    <section>
+      <h2>Codici in attesa</h2>
+      <div class="wrap"><table><thead><tr><th>Username</th><th>Codice</th><th>Ruolo</th><th>Fazione</th><th>Creato</th><th></th></tr></thead><tbody id="pending"></tbody></table></div>
+    </section>
+
+    <section>
+      <h2>Stato del gioco</h2>
+      <form id="stateForm">
+        <div class="grid">
+          <label>Giorno<input id="s_day" type="number" min="0"></label>
+          <label>Sopravvissuti (follower)<input id="s_survivors" type="number" min="0"></label>
+          <label>Energia (like)<input id="s_energy" type="number" min="0"></label>
+          <label>Obiettivo energia<input id="s_goal" type="number" min="1"></label>
+          <label>Obiettivo dell'attacco<input id="s_target" maxlength="60"></label>
+          <label>Scadenza attacco<input id="s_deadline" type="datetime-local"></label>
+          <label>Esito<select id="s_status"><option value="nessuno">nessuno</option><option value="in_corso">in corso</option><option value="respinto">respinto</option><option value="perso">perso</option></select></label>
+        </div>
+        <label style="margin-top:10px">Frase di ULTIMA in evidenza<textarea id="s_line" rows="2" maxlength="280"></textarea></label>
+        <div class="row" style="margin-top:10px"><button class="go" type="submit">Salva stato</button><span class="msg" id="stateMsg"></span></div>
+      </form>
+    </section>
+
+    <section>
+      <h2>Ruoli</h2>
+      <div class="wrap"><table><thead><tr><th>Ruolo</th><th>Verificati</th><th>In attesa</th><th>Posti</th><th>Primo</th><th></th></tr></thead><tbody id="roles"></tbody></table></div>
+      <p class="msg" id="rolesMsg"></p>
+    </section>
+
+    <p style="color:var(--dust)" id="counts"></p>
+  </div>
+</main>
+<script>
+(function(){
+"use strict";
+let TOKEN='';
+try{TOKEN=sessionStorage.getItem('gu_admin')||'';}catch(e){}
+const $=id=>document.getElementById(id);
+const esc=v=>String(v??'').replace(/[<>&"']/g,c=>'&#'+c.charCodeAt(0)+';');
+async function api(action,extra){
+  const r=await fetch('/api/admin',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+TOKEN},body:JSON.stringify(Object.assign({action},extra||{}))});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(d.error||('Errore '+r.status));
+  return d;
+}
+const toLocal=iso=>{if(!iso)return'';const d=new Date(iso);const p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;};
+async function refresh(){
+  const d=await api('overview');
+  const s=d.state;
+  $('s_day').value=s.day;$('s_survivors').value=s.survivors;$('s_energy').value=s.energy;$('s_goal').value=s.goal;
+  $('s_target').value=s.attack_target||'';$('s_deadline').value=toLocal(s.attack_deadline);$('s_status').value=s.attack_status;$('s_line').value=s.ultima_line||'';
+  $('pending').innerHTML=d.pending.length?d.pending.map(p=>`<tr><td>@${esc(p.handle)}</td><td><code>${esc(p.code)}</code></td><td>${esc(p.role)}</td><td>${p.faction==='u'?'ULTIMA':'Umani'}</td><td>${new Date(p.created_at).toLocaleString('it-IT')}</td><td class="row"><button class="go" data-v="${esc(p.code)}">Verifica</button><button class="no" data-r="${esc(p.code)}">Rifiuta</button></td></tr>`).join(''):'<tr><td colspan="6" style="color:var(--dust)">Nessun codice in attesa.</td></tr>';
+  $('roles').innerHTML=d.roles.map(r=>`<tr><td>${esc(r.name)}</td><td>${r.verified}</td><td>${r.pending}</td><td><input type="number" min="0" value="${r.max_slots}" id="slot-${esc(r.id)}" style="width:80px" aria-label="Posti ${esc(r.name)}"></td><td>${r.first_handle?'@'+esc(r.first_handle):'—'}</td><td><button data-s="${esc(r.id)}">Salva posti</button></td></tr>`).join('');
+  $('counts').textContent=`Sopravvissuti verificati: ${d.counts.verified} · con allarme email: ${d.counts.email_optin}`;
+}
+async function verify(code,msgEl){
+  try{const d=await api('verify',{code});msgEl.textContent=`@${d.handle} verificato${d.first?' · è il Primo del suo ruolo':''}.`;await refresh();}
+  catch(e){msgEl.textContent=e.message;}
+}
+$('loginForm').addEventListener('submit',async e=>{
+  e.preventDefault();TOKEN=$('token').value.trim();
+  try{await refresh();try{sessionStorage.setItem('gu_admin',TOKEN);}catch(err){}$('login').hidden=true;$('app').hidden=false;}
+  catch(err){$('loginMsg').textContent=err.message;}
+});
+$('verifyForm').addEventListener('submit',e=>{e.preventDefault();verify($('code').value,$('verifyMsg')).then(()=>{$('code').value='';});});
+document.addEventListener('click',async e=>{
+  const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.v)verify(b.dataset.v,$('verifyMsg'));
+  if(b.dataset.r){try{await api('reject',{code:b.dataset.r});$('verifyMsg').textContent='Codice rifiutato.';refresh();}catch(err){$('verifyMsg').textContent=err.message;}}
+  if(b.dataset.s){try{await api('slots',{role:b.dataset.s,max_slots:$('slot-'+b.dataset.s).value});$('rolesMsg').textContent='Posti aggiornati.';refresh();}catch(err){$('rolesMsg').textContent=err.message;}}
+});
+$('stateForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  const dl=$('s_deadline').value;
+  try{
+    await api('state',{state:{day:$('s_day').value,survivors:$('s_survivors').value,energy:$('s_energy').value,goal:$('s_goal').value,attack_target:$('s_target').value,attack_deadline:dl?new Date(dl).toISOString():null,attack_status:$('s_status').value,ultima_line:$('s_line').value}});
+    $('stateMsg').textContent='Stato salvato. Il sito si aggiorna entro 30 secondi.';refresh();
+  }catch(err){$('stateMsg').textContent=err.message;}
+});
+if(TOKEN)refresh().then(()=>{$('login').hidden=true;$('app').hidden=false;}).catch(()=>{});
+})();
+</script>
+</body>
+</html>
