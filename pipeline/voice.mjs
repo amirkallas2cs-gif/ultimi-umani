@@ -40,7 +40,27 @@ const GEMINI_STYLE = process.env.GEMINI_STYLE ||
   "Leggi in italiano come un'intelligenza artificiale che ha preso il controllo del mondo: voce calma, fredda, " +
   'lievemente ironica e sicura di sé, ritmo lento, pause brevi tra le frasi, mai urlare';
 
+// Livello gratuito: massimo 3 richieste al minuto. Una richiesta ogni 21 secondi,
+// e se Google chiede di aspettare si aspetta il tempo indicato e si riprova.
+const GEMINI_GAP = Number(process.env.GEMINI_GAP_SECONDS || 21) * 1000;
+let lastGemini = 0;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
 async function gemini(text, file) {
+  for (let attempt = 1; ; attempt++) {
+    const wait = lastGemini + GEMINI_GAP - Date.now();
+    if (lastGemini && wait > 0) await sleep(wait);
+    lastGemini = Date.now();
+    try { return await geminiOnce(text, file); } catch (e) {
+      if (e.status !== 429 || attempt >= 5) throw e;
+      const secs = Number((/retry in ([\d.]+)s/i.exec(e.message) || [])[1]) || 30;
+      console.log(`Gemini: quota al minuto raggiunta, riprovo tra ${Math.ceil(secs)}s`);
+      await sleep((secs + 1) * 1000);
+    }
+  }
+}
+
+async function geminiOnce(text, file) {
   const model = process.env.GEMINI_TTS_MODEL || 'gemini-3.1-flash-tts-preview';
   const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: 'POST',
@@ -54,7 +74,7 @@ async function gemini(text, file) {
     }),
   });
   const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(`Gemini ${r.status}: ${d.error?.message || 'risposta non valida'}`);
+  if (!r.ok) throw Object.assign(new Error(`Gemini ${r.status}: ${d.error?.message || 'risposta non valida'}`), { status: r.status });
   const part = d.candidates?.[0]?.content?.parts?.find(p => p.inlineData?.data);
   if (!part) throw new Error('Gemini non ha restituito audio.');
   // PCM 16 bit, mono, 24 kHz
