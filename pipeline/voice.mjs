@@ -37,8 +37,22 @@ async function elevenlabs(text, file) {
 
 // Come recita ULTIMA (si può cambiare con la variabile GEMINI_STYLE)
 const GEMINI_STYLE = process.env.GEMINI_STYLE ||
-  "Leggi in italiano come un'intelligenza artificiale che ha preso il controllo del mondo: voce calma, fredda, " +
-  'lievemente ironica e sicura di sé, ritmo lento, pause brevi tra le frasi, mai urlare';
+  "Leggi in italiano come una voce sintetica di un'intelligenza artificiale: robotica, fredda, piatta e monotona, " +
+  'senza emozioni e senza calore umano, articolazione precisa, ritmo sostenuto e veloce, pause minime tra le frasi';
+
+// Robotizzazione per singola frase (Gemini, ElevenLabs): accelera e appiattisce l'intonazione come un vocoder,
+// mescolando la voce robotica a quella pulita perché resti capibile.
+// VOICE_SPEED (default 1.12) e VOICE_ROBOT (0 = umana, 1 = solo robot; default 0.5) si regolano da GitHub.
+const SPEED = Math.min(1.6, Math.max(0.8, Number(process.env.VOICE_SPEED) || 1.12));
+const ROBOT = Math.min(1, Math.max(0, process.env.VOICE_ROBOT === undefined || process.env.VOICE_ROBOT === '' ? 0.5 : Number(process.env.VOICE_ROBOT)));
+function robotize(file) {
+  ff(['-i', file, '-filter_complex',
+    `[0]asplit=2[dry][wet];[wet]afftfilt=real='hypot(re,im)':imag='0':win_size=512:overlap=0.75[robot];` +
+    `[dry][robot]amix=inputs=2:weights='${(1 - ROBOT).toFixed(2)} ${ROBOT.toFixed(2)}':normalize=0,` +
+    `atempo=${SPEED},acrusher=bits=12:mix=0.18:mode=log`,
+    '-ar', '44100', '-ac', '1', file + '.robot.wav']);
+  fs.renameSync(file + '.robot.wav', file);
+}
 
 // Livello gratuito: massimo 3 richieste al minuto. Una richiesta ogni 21 secondi,
 // e se Google chiede di aspettare si aspetta il tempo indicato e si riprova.
@@ -103,6 +117,7 @@ async function build() {
     if (text) {
       const file = `out/voice/v${String(i).padStart(2, '0')}.wav`;
       await speak(text, file);
+      if (engine !== 'piper') robotize(file);
       const len = probe(file);
       d = Math.max(base, LEAD + len + TAIL);
       clips.push({ file, at: start + LEAD });
@@ -142,7 +157,7 @@ if (clips.length) {
     `amix=inputs=${clips.length}:normalize=0,apad,atrim=0:${total.toFixed(2)},` +
     (engine === 'piper'
       ? `asetrate=44100*0.95,aresample=44100,atempo=1.0526,highpass=f=90,aecho=0.75:0.5:28:0.22,flanger=delay=1.5:depth=1:speed=0.2:width=40,volume=1.5,`
-      : `highpass=f=80,aecho=0.8:0.4:24:0.12,flanger=delay=1:depth=0.6:speed=0.15:width=25,volume=1.3,`) +
+      : `highpass=f=110,flanger=delay=1:depth=0.8:speed=0.3:width=35,aecho=0.8:0.35:18:0.15,volume=1.4,`) +
     `alimiter=limit=0.95[v]`;
   ff([...inputs, '-filter_complex', `${delays};${mix}`, '-map', '[v]', '-ar', '44100', 'out/voice.wav']);
 }

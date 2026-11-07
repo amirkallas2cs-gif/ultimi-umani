@@ -38,6 +38,8 @@ jobs:
       GEMINI_VOICE: ${{ vars.GEMINI_VOICE }}
       GEMINI_TTS_MODEL: ${{ vars.GEMINI_TTS_MODEL }}
       GEMINI_STYLE: ${{ vars.GEMINI_STYLE }}
+      VOICE_SPEED: ${{ vars.VOICE_SPEED }}
+      VOICE_ROBOT: ${{ vars.VOICE_ROBOT }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
