@@ -11,8 +11,8 @@ on:
       step:
         description: 'Cosa eseguire'
         type: choice
-        options: [video, pubblica, tutto]
-        default: video
+        options: [voce, video, pubblica, tutto]
+        default: voce
       day:
         description: 'Giorno (vuoto = giorno attuale del gioco)'
         required: false
@@ -27,7 +27,7 @@ env:
 
 jobs:
   video:
-    if: github.event.schedule == '30 15 * * *' || (github.event_name == 'workflow_dispatch' && inputs.step != 'pubblica')
+    if: github.event.schedule == '30 15 * * *' || (github.event_name == 'workflow_dispatch' && (inputs.step == 'video' || inputs.step == 'tutto'))
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -74,9 +74,56 @@ jobs:
           path: out/*.mp4
           retention-days: 7
 
+  # Prova veloce (2-4 minuti): genera solo la voce narrante e la mette negli allegati del run
+  voce:
+    if: github.event_name == 'workflow_dispatch' && inputs.step == 'voce'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+      ELEVENLABS_VOICE_ID: ${{ vars.ELEVENLABS_VOICE_ID }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_VOICE: ${{ vars.GEMINI_VOICE }}
+      GEMINI_TTS_MODEL: ${{ vars.GEMINI_TTS_MODEL }}
+      GEMINI_STYLE: ${{ vars.GEMINI_STYLE }}
+      VOICE_SPEED: ${{ vars.VOICE_SPEED }}
+      VOICE_ROBOT: ${{ vars.VOICE_ROBOT }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@v4
+        with:
+          path: pipeline/voices
+          key: piper-paola-medium-v1
+      - name: Voce Piper (riserva)
+        run: |
+          pip install piper-tts==1.2.0
+          mkdir -p pipeline/voices
+          base=https://huggingface.co/rhasspy/piper-voices/resolve/main/it/it_IT/paola/medium
+          [ -f pipeline/voices/it_IT-paola-medium.onnx ] || curl -sSL -o pipeline/voices/it_IT-paola-medium.onnx $base/it_IT-paola-medium.onnx
+          [ -f pipeline/voices/it_IT-paola-medium.onnx.json ] || curl -sSL -o pipeline/voices/it_IT-paola-medium.onnx.json $base/it_IT-paola-medium.onnx.json
+      - name: Stampa le impostazioni della voce
+        run: |
+          echo "Motore: $([ -n "$ELEVENLABS_API_KEY" ] && echo ElevenLabs || ([ -n "$GEMINI_API_KEY" ] && echo Gemini || echo Piper))"
+          echo "GEMINI_VOICE=${GEMINI_VOICE:-Kore (predefinita)}"
+          echo "VOICE_ROBOT=${VOICE_ROBOT:-0.5 (predefinito)}  VOICE_SPEED=${VOICE_SPEED:-1.12 (predefinito)}"
+          echo "GEMINI_STYLE=${GEMINI_STYLE:-(predefinito)}"
+      - run: node pipeline/voice.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: voce-prova
+          path: out/voice.wav
+          retention-days: 7
+
   pubblica:
     needs: [video]
-    if: always() && (github.event.schedule == '20 17 * * *' || (github.event_name == 'workflow_dispatch' && inputs.step != 'video'))
+    if: always() && (github.event.schedule == '20 17 * * *' || (github.event_name == 'workflow_dispatch' && (inputs.step == 'pubblica' || inputs.step == 'tutto')))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:

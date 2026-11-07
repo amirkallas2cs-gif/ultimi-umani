@@ -46,6 +46,11 @@ const GEMINI_STYLE = process.env.GEMINI_STYLE ||
 const SPEED = Math.min(1.6, Math.max(0.8, Number(process.env.VOICE_SPEED) || 1.12));
 const ROBOT = Math.min(1, Math.max(0, process.env.VOICE_ROBOT === undefined || process.env.VOICE_ROBOT === '' ? 0.5 : Number(process.env.VOICE_ROBOT)));
 function robotize(file) {
+  // VOICE_ROBOT=0: nessun effetto, solo la velocità
+  if (ROBOT === 0) {
+    if (SPEED !== 1) { ff(['-i', file, '-af', `atempo=${SPEED}`, '-ar', '44100', '-ac', '1', file + '.robot.wav']); fs.renameSync(file + '.robot.wav', file); }
+    return;
+  }
   ff(['-i', file, '-filter_complex',
     `[0]asplit=2[dry][wet];[wet]afftfilt=real='hypot(re,im)':imag='0':win_size=512:overlap=0.75[robot];` +
     `[dry][robot]amix=inputs=2:weights='${(1 - ROBOT).toFixed(2)} ${ROBOT.toFixed(2)}':normalize=0,` +
@@ -157,6 +162,7 @@ if (clips.length) {
     `amix=inputs=${clips.length}:normalize=0,apad,atrim=0:${total.toFixed(2)},` +
     (engine === 'piper'
       ? `asetrate=44100*0.95,aresample=44100,atempo=1.0526,highpass=f=90,aecho=0.75:0.5:28:0.22,flanger=delay=1.5:depth=1:speed=0.2:width=40,volume=1.5,`
+      : ROBOT === 0 ? `highpass=f=70,volume=1.3,`
       : `highpass=f=110,flanger=delay=1:depth=0.8:speed=0.3:width=35,aecho=0.8:0.35:18:0.15,volume=1.4,`) +
     `alimiter=limit=0.95[v]`;
   ff([...inputs, '-filter_complex', `${delays};${mix}`, '-map', '[v]', '-ar', '44100', 'out/voice.wav']);
