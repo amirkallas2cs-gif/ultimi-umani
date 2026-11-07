@@ -40,6 +40,12 @@ jobs:
       GEMINI_STYLE: ${{ vars.GEMINI_STYLE }}
       VOICE_SPEED: ${{ vars.VOICE_SPEED }}
       VOICE_FX: ${{ vars.VOICE_FX }}
+      VOICE_FX_ULTIMA: ${{ vars.VOICE_FX_ULTIMA }}
+      VOICE_FX_NARRATORE: ${{ vars.VOICE_FX_NARRATORE }}
+      VOICE_SPEED_NARRATORE: ${{ vars.VOICE_SPEED_NARRATORE }}
+      GEMINI_VOICE_NARRATORE: ${{ vars.GEMINI_VOICE_NARRATORE }}
+      GEMINI_STYLE_NARRATORE: ${{ vars.GEMINI_STYLE_NARRATORE }}
+      ELEVENLABS_VOICE_ID_NARRATORE: ${{ vars.ELEVENLABS_VOICE_ID_NARRATORE }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -88,6 +94,12 @@ jobs:
       GEMINI_STYLE: ${{ vars.GEMINI_STYLE }}
       VOICE_SPEED: ${{ vars.VOICE_SPEED }}
       VOICE_FX: ${{ vars.VOICE_FX }}
+      VOICE_FX_ULTIMA: ${{ vars.VOICE_FX_ULTIMA }}
+      VOICE_FX_NARRATORE: ${{ vars.VOICE_FX_NARRATORE }}
+      VOICE_SPEED_NARRATORE: ${{ vars.VOICE_SPEED_NARRATORE }}
+      GEMINI_VOICE_NARRATORE: ${{ vars.GEMINI_VOICE_NARRATORE }}
+      GEMINI_STYLE_NARRATORE: ${{ vars.GEMINI_STYLE_NARRATORE }}
+      ELEVENLABS_VOICE_ID_NARRATORE: ${{ vars.ELEVENLABS_VOICE_ID_NARRATORE }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -112,7 +124,8 @@ jobs:
         run: |
           echo "Motore: $([ -n "$ELEVENLABS_API_KEY" ] && echo ElevenLabs || ([ -n "$GEMINI_API_KEY" ] && echo Gemini || echo Piper))"
           echo "GEMINI_VOICE=${GEMINI_VOICE:-Kore (predefinita)}"
-          echo "VOICE_FX=${VOICE_FX:-android (predefinito)}  VOICE_SPEED=${VOICE_SPEED:-1.12 (predefinito)}"
+          echo "ULTIMA: effetto ${VOICE_FX_ULTIMA:-${VOICE_FX:-sintetizzatore}}  ·  NARRATORE: effetto ${VOICE_FX_NARRATORE:-umana}, voce ${GEMINI_VOICE_NARRATORE:-${GEMINI_VOICE:-Kore}}"
+          echo "VOICE_SPEED=${VOICE_SPEED:-1.12 (predefinito)}"
           echo "GEMINI_STYLE=${GEMINI_STYLE:-(predefinito)}"
       - run: node pipeline/voice.mjs
         env:
