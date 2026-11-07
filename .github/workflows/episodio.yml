@@ -39,7 +39,7 @@ jobs:
       GEMINI_TTS_MODEL: ${{ vars.GEMINI_TTS_MODEL }}
       GEMINI_STYLE: ${{ vars.GEMINI_STYLE }}
       VOICE_SPEED: ${{ vars.VOICE_SPEED }}
-      VOICE_ROBOT: ${{ vars.VOICE_ROBOT }}
+      VOICE_FX: ${{ vars.VOICE_FX }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -87,7 +87,7 @@ jobs:
       GEMINI_TTS_MODEL: ${{ vars.GEMINI_TTS_MODEL }}
       GEMINI_STYLE: ${{ vars.GEMINI_STYLE }}
       VOICE_SPEED: ${{ vars.VOICE_SPEED }}
-      VOICE_ROBOT: ${{ vars.VOICE_ROBOT }}
+      VOICE_FX: ${{ vars.VOICE_FX }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -112,13 +112,15 @@ jobs:
         run: |
           echo "Motore: $([ -n "$ELEVENLABS_API_KEY" ] && echo ElevenLabs || ([ -n "$GEMINI_API_KEY" ] && echo Gemini || echo Piper))"
           echo "GEMINI_VOICE=${GEMINI_VOICE:-Kore (predefinita)}"
-          echo "VOICE_ROBOT=${VOICE_ROBOT:-0.5 (predefinito)}  VOICE_SPEED=${VOICE_SPEED:-1.12 (predefinito)}"
+          echo "VOICE_FX=${VOICE_FX:-android (predefinito)}  VOICE_SPEED=${VOICE_SPEED:-1.12 (predefinito)}"
           echo "GEMINI_STYLE=${GEMINI_STYLE:-(predefinito)}"
       - run: node pipeline/voice.mjs
+        env:
+          VOICE_TEST_PRESETS: '1'
       - uses: actions/upload-artifact@v4
         with:
           name: voce-prova
-          path: out/voice.wav
+          path: out/prova-*.wav
           retention-days: 7
 
   pubblica:

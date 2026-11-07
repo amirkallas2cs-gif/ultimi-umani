@@ -41,23 +41,28 @@ const GEMINI_STYLE = process.env.GEMINI_STYLE ||
   'senza emozioni e senza calore umano, articolazione precisa, ritmo sostenuto e veloce, pause minime tra le frasi. ' +
   'Pronuncia italiana standard e neutra, dizione da doppiatore, nessun accento o inflessione regionale';
 
-// Robotizzazione per singola frase (Gemini, ElevenLabs): accelera e appiattisce l'intonazione come un vocoder,
-// mescolando la voce robotica a quella pulita perché resti capibile.
-// VOICE_SPEED (default 1.12) e VOICE_ROBOT (0 = umana, 1 = solo robot; default 0.5) si regolano da GitHub.
+// Effetto voce di ULTIMA, scelto con la variabile VOICE_FX:
+//   android        voce sintetica monotona e grave, con risonanza metallica (predefinito)
+//   sintetizzatore monotona più acuta, con chorus da sintetizzatore
+//   dalek          modulazione ad anello: il classico robot "da film"
+//   glitch         robot disturbato, con bit crusher e tremolio
+//   retro          computer anni '80: banda stretta e campionamento grezzo
+//   umana          nessun effetto
+// VOICE_SPEED (default 1.12) regola la velocità senza cambiare il tono.
 const SPEED = Math.min(1.6, Math.max(0.8, Number(process.env.VOICE_SPEED) || 1.12));
-const ROBOT = Math.min(1, Math.max(0, process.env.VOICE_ROBOT === undefined || process.env.VOICE_ROBOT === '' ? 0.5 : Number(process.env.VOICE_ROBOT)));
-function robotize(file) {
-  // VOICE_ROBOT=0: nessun effetto, solo la velocità
-  if (ROBOT === 0) {
-    if (SPEED !== 1) { ff(['-i', file, '-af', `atempo=${SPEED}`, '-ar', '44100', '-ac', '1', file + '.robot.wav']); fs.renameSync(file + '.robot.wav', file); }
-    return;
-  }
-  ff(['-i', file, '-filter_complex',
-    `[0]asplit=2[dry][wet];[wet]afftfilt=real='hypot(re,im)':imag='0':win_size=512:overlap=0.75[robot];` +
-    `[dry][robot]amix=inputs=2:weights='${(1 - ROBOT).toFixed(2)} ${ROBOT.toFixed(2)}':normalize=0,` +
-    `atempo=${SPEED},acrusher=bits=12:mix=0.18:mode=log`,
-    '-ar', '44100', '-ac', '1', file + '.robot.wav']);
-  fs.renameSync(file + '.robot.wav', file);
+const ROBOT_CORE = ov => `afftfilt=real='hypot(re,im)':imag='0':win_size=1024:overlap=${ov}`;
+const PRESETS = {
+  android: `[0]atempo=${SPEED},${ROBOT_CORE(0.57)},highpass=f=120,aecho=0.8:0.6:6:0.45,volume=1.4[o]`,
+  sintetizzatore: `[0]atempo=${SPEED},${ROBOT_CORE(0.71)},highpass=f=150,chorus=0.6:0.8:20|28:0.4|0.3:0.25|0.4:2|1.5,volume=1.4[o]`,
+  dalek: `[0]atempo=${SPEED},volume=1.6[v];[v][1]amultiply,acrusher=bits=8:mix=0.25:mode=log,highpass=f=150,volume=1.6[o]`,
+  glitch: `[0]atempo=${SPEED},${ROBOT_CORE(0.57)},acrusher=bits=6:samples=3:mix=0.55:mode=log,tremolo=f=16:d=0.35,highpass=f=120,volume=1.4[o]`,
+  retro: `[0]atempo=${SPEED},${ROBOT_CORE(0.8)},highpass=f=400,lowpass=f=3500,acrusher=bits=8:samples=4:mix=0.7,volume=1.8[o]`,
+  umana: `[0]atempo=${SPEED}[o]`,
+};
+const FX = PRESETS[process.env.VOICE_FX] ? process.env.VOICE_FX : 'android';
+function applyFx(inFile, outFile, preset) {
+  ff(['-i', inFile, '-f', 'lavfi', '-i', 'sine=f=40:sample_rate=44100',
+    '-filter_complex', PRESETS[preset], '-map', '[o]', '-t', '60', '-ar', '44100', '-ac', '1', outFile]);
 }
 
 // Livello gratuito: massimo 3 richieste al minuto. Una richiesta ogni 21 secondi,
@@ -123,10 +128,12 @@ async function build() {
     if (text) {
       const file = `out/voice/v${String(i).padStart(2, '0')}.wav`;
       await speak(text, file);
-      if (engine !== 'piper') robotize(file);
+      const raw = file.replace(/\.wav$/, '.base.wav');
+      fs.renameSync(file, raw);
+      applyFx(raw, file, FX);
       const len = probe(file);
       d = Math.max(base, LEAD + len + TAIL);
-      clips.push({ file, at: start + LEAD });
+      clips.push({ file, raw, at: start + LEAD });
     }
     durations.push(Number(d.toFixed(2)));
     start += d;
@@ -154,19 +161,26 @@ try {
 const { durations, clips } = built;
 
 const total = durations.reduce((a, b) => a + b, 0);
-if (clips.length) {
-  // Allinea le frasi sulla timeline e dà alla voce il timbro di ULTIMA:
-  // un po' più grave, eco corta metallica e un leggero flanger
-  const inputs = clips.flatMap(c => ['-i', c.file]);
+
+// Allinea le frasi sulla timeline della durata del video
+function mixTimeline(files, out) {
+  const inputs = files.flatMap(f => ['-i', f]);
   const delays = clips.map((c, k) => `[${k}]adelay=${Math.round(c.at * 1000)}:all=1[d${k}]`).join(';');
   const mix = clips.map((_, k) => `[d${k}]`).join('') +
-    `amix=inputs=${clips.length}:normalize=0,apad,atrim=0:${total.toFixed(2)},` +
-    (engine === 'piper'
-      ? `asetrate=44100*0.95,aresample=44100,atempo=1.0526,highpass=f=90,aecho=0.75:0.5:28:0.22,flanger=delay=1.5:depth=1:speed=0.2:width=40,volume=1.5,`
-      : ROBOT === 0 ? `highpass=f=70,volume=1.3,`
-      : `highpass=f=110,flanger=delay=1:depth=0.8:speed=0.3:width=35,aecho=0.8:0.35:18:0.15,volume=1.4,`) +
-    `alimiter=limit=0.95[v]`;
-  ff([...inputs, '-filter_complex', `${delays};${mix}`, '-map', '[v]', '-ar', '44100', 'out/voice.wav']);
+    `amix=inputs=${clips.length}:normalize=0,apad,atrim=0:${total.toFixed(2)},highpass=f=60,volume=1.2,alimiter=limit=0.95[v]`;
+  ff([...inputs, '-filter_complex', `${delays};${mix}`, '-map', '[v]', '-ar', '44100', out]);
 }
-fs.writeFileSync('out/voice.json', JSON.stringify({ engine, durations, total }));
-console.log(`Voce (${engine}): ${clips.length} frasi, durata totale ${total.toFixed(1)}s`);
+
+if (clips.length) {
+  mixTimeline(clips.map(c => c.file), 'out/voice.wav');
+  // Prova: la stessa registrazione con tutti gli effetti, per sceglierne uno ascoltando
+  if (process.env.VOICE_TEST_PRESETS) {
+    for (const preset of Object.keys(PRESETS)) {
+      const files = clips.map((c, k) => { const f = `out/voice/p-${preset}-${k}.wav`; applyFx(c.raw, f, preset); return f; });
+      mixTimeline(files, `out/prova-${preset}.wav`);
+      console.log('Prova pronta:', `prova-${preset}.wav`);
+    }
+  }
+}
+fs.writeFileSync('out/voice.json', JSON.stringify({ engine, fx: FX, durations, total }));
+console.log(`Voce (${engine}, effetto ${FX}): ${clips.length} frasi, durata totale ${total.toFixed(1)}s`);
