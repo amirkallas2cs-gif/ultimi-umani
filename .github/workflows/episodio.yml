@@ -1,0 +1,67 @@
+name: Episodio del giorno
+
+# Orari in UTC. Con l'ora solare italiana (UTC+1): video alle 16:30, pubblicazione verso le 18:30.
+# Con l'ora legale (UTC+2) spostare entrambi gli orari un'ora prima.
+on:
+  schedule:
+    - cron: '30 15 * * *'   # video
+    - cron: '20 17 * * *'   # pubblicazione Instagram (GitHub può ritardare di qualche minuto)
+  workflow_dispatch:
+    inputs:
+      step:
+        description: 'Cosa eseguire'
+        type: choice
+        options: [video, pubblica, tutto]
+        default: video
+      day:
+        description: 'Giorno (vuoto = giorno attuale del gioco)'
+        required: false
+
+env:
+  SITE_URL: ${{ vars.SITE_URL }}
+  ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+  NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+  NOTION_EPISODES_DB: 0d83bea8bafb4cd9a97ac071174c998c
+  NOTION_LOG_DB: 5275fb30573a4c849f73c4580b632e00
+  DAY: ${{ inputs.day }}
+
+jobs:
+  video:
+    if: github.event.schedule == '30 15 * * *' || (github.event_name == 'workflow_dispatch' && inputs.step != 'pubblica')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --prefix pipeline
+      - run: npx --prefix pipeline playwright install --with-deps chromium
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: node pipeline/render.mjs
+      - run: node pipeline/encode.mjs
+      - run: node pipeline/upload.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: video-giorno
+          path: out/*.mp4
+          retention-days: 7
+
+  pubblica:
+    needs: [video]
+    if: always() && (github.event.schedule == '20 17 * * *' || (github.event_name == 'workflow_dispatch' && inputs.step != 'video'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      IG_USER_ID: ${{ secrets.IG_USER_ID }}
+      IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+      IG_GRAPH_HOST: ${{ vars.IG_GRAPH_HOST }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node pipeline/publish.mjs

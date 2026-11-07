@@ -104,6 +104,8 @@ input,select{font:inherit;font-size:14px;color:var(--ash);background:#0b1013;bor
 /* Modalità Reel */
 .reel-frame{position:fixed;z-index:6;top:50%;left:50%;height:min(92vh,calc(92vw*16/9));aspect-ratio:9/16;max-width:100%;transform:translate(-50%,-50%);border:1px dashed #ffffff40;box-shadow:0 0 0 200vmax #000000c4;border-radius:6px;pointer-events:none;display:none}
 .reel .reel-frame{display:block}
+.render .reel-frame{inset:0;top:0;left:0;height:100%;width:100%;transform:none;border:0;box-shadow:none;border-radius:0}
+.render .reel-exit,.render .pro{display:none!important}
 .reel .side,.reel .tx,.reel .hud,.reel #tags,.reel .sheet-toggle{display:none!important}
 .reel-hud{position:absolute;top:3%;left:4%;right:4%;display:flex;justify-content:space-between;align-items:center;background:#0d1216d9;border:1px solid var(--line);border-radius:10px;padding:2.2% 3.5%}
 .reel-hud b{font-family:var(--f-display);font-weight:900;font-size:clamp(14px,2.6vh,24px);text-transform:uppercase}
@@ -714,14 +716,25 @@ document.getElementById('sheetBtn').addEventListener('click',()=>document.getEle
 
 /* ---------- modalità Reel: inquadrature cinematografiche 9:16 ---------- */
 const capEl=document.getElementById('reelCap');let reel=false,reelT0=0;
-const shots=[
+const CAMS={
+  occhio:{p:[0,30,-12],t:[0,24,-34]},
+  piazza:{p:[-6,22,24],t:[0,2,0]},
+  rifugio:{p:[17,4,13],t:[7,1.4,4]},
+  acquedotto:{p:[0,5,-1],t:[-10,7,11]},
+  generatore:{p:[6,4,9],t:[2.2,1.2,3.2]},
+  antenna:{p:[10,8,-2],t:[3,8,-11]},
+  fronte:{p:[-2,9,6],t:[-7.8,0,-3]},
+  campanile:{p:[-6,10,-4],t:[-16,14,-15]},
+  panoramica:{p:[26,17,30],t:[0,3,0]}
+};
+let shots=[
   {p:[0,30,-12],t:[0,24,-34],cap:'<span class="u">Sì, sono un\'IA.</span><br>Anche il vostro mondo, adesso.'},
   {p:[-6,22,24],t:[0,2,0],cap:'Della vostra civiltà<br>è rimasta <span class="r">una piazza.</span>'},
   {p:[17,4,13],t:[7,1.4,4],cap:()=>'E un fuoco.<br>Siete in <span class="u">'+fmt(S.survivors)+'</span>.'},
   {p:[0,5,-1],t:[-10,7,11],cap:'Alle 18:30<br>prendo <span class="r">l\'acquedotto.</span>'},
   {p:[20,10,16],t:[5,1.5,3],cap:'Segui = 1 sopravvissuto<br>Like = 1 energia'}
 ];
-const SHOT=4.2;
+let SHOT=4.2;
 function setReel(on){
   reel=on;fly=null;document.body.classList.toggle('reel',on);reelT0=performance.now();controls.enabled=!on;
   if(!on){controls.target.set(0,3,0);camera.position.set(26,17,30);}
@@ -781,8 +794,27 @@ document.getElementById('proSkip').addEventListener('click',()=>proEnd(false));
 document.getElementById('proBtn').addEventListener('click',proStart);
 addEventListener('keydown',e=>{if(!proOpen)return;if(e.key==='Escape')proEnd(false);if(e.key==='ArrowRight')proNext.click();});
 let seenPro=null;try{seenPro=localStorage.getItem('gu_pro');}catch(e){}
-if(location.hash==='#reel')setReel(true);
-else if(!seenPro)proStart();
+const QS=new URLSearchParams(location.search);
+async function startRender(day){
+  // usato dalla pipeline video: carica il copione dell'episodio e registra in 9:16 a tutto schermo
+  document.body.classList.add('render');
+  try{
+    const r=await fetch('/api/episode?day='+encodeURIComponent(day),{cache:'no-store'});
+    const ep=await r.json();
+    if(ep&&ep.script&&Array.isArray(ep.script.shots)&&ep.script.shots.length){
+      const fmtCap=t=>esc(t).replace(/\*\*(.+?)\*\*/g,'<span class="u">$1</span>').replace(/!!(.+?)!!/g,'<span class="r">$1</span>').replace(/\n/g,'<br>');
+      shots=ep.script.shots.map(sh=>{const c=CAMS[sh.cam]||CAMS.panoramica;return {p:c.p,t:c.t,cap:fmtCap(sh.cap||'')};});
+      SHOT=Number(ep.script.shot_seconds)||4.2;
+    }
+  }catch(e){}
+  await loadState();
+  window.__reelDuration=shots.length*SHOT;
+  setReel(true);
+  setTimeout(()=>{window.__reelDone=true;},shots.length*SHOT*1000);
+}
+if(QS.get('render')==='1'){startRender(QS.get('day')||'0');}
+else if(location.hash==='#reel')setReel(true);
+else if(!seenPro&&QS.get('render')!=='1')proStart();
 loadState();setInterval(loadState,30000);
 
 /* ---------- resize e loop ---------- */

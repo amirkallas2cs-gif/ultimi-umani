@@ -94,6 +94,37 @@ export default async function handler(req, res) {
         return json(res, 200, { ok: true, role: r[0] });
       }
 
+      case 'episode': {
+        // Crea o aggiorna l'episodio del giorno (lo usa la sessione delle 15:00)
+        const e = b.episode || {};
+        const day = int(e.day, null);
+        if (day === null) return json(res, 400, { error: 'Giorno mancante.' });
+        const script = e.script && Array.isArray(e.script.shots) ? e.script : null;
+        if (!script) return json(res, 400, { error: 'Copione mancante: servono script.shots.' });
+        await sql`INSERT INTO episodes (day, title, script, caption, decision)
+                  VALUES (${day}, ${e.title || null}, ${JSON.stringify(script)}::jsonb, ${e.caption || null}, ${e.decision || null})
+                  ON CONFLICT (day) DO UPDATE SET title = EXCLUDED.title, script = EXCLUDED.script,
+                    caption = EXCLUDED.caption, decision = EXCLUDED.decision`;
+        await log('episode', { day, title: e.title || null });
+        return json(res, 200, { ok: true, day });
+      }
+
+      case 'episode_media': {
+        // La pipeline registra URL dei video, id del Reel e stato
+        const day = int(b.day, null);
+        if (day === null) return json(res, 400, { error: 'Giorno mancante.' });
+        await sql`UPDATE episodes SET
+                    video_url = COALESCE(${b.video_url || null}, video_url),
+                    video_nomusic_url = COALESCE(${b.video_nomusic_url || null}, video_nomusic_url),
+                    ig_media_id = COALESCE(${b.ig_media_id || null}, ig_media_id),
+                    notion_page_id = COALESCE(${b.notion_page_id || null}, notion_page_id),
+                    blocked = COALESCE(${typeof b.blocked === 'boolean' ? b.blocked : null}, blocked),
+                    published_at = CASE WHEN ${!!b.published} THEN now() ELSE published_at END
+                  WHERE day = ${day}`;
+        await log('episode_media', { day, published: !!b.published });
+        return json(res, 200, { ok: true });
+      }
+
       default:
         return json(res, 400, { error: 'Azione sconosciuta.' });
     }

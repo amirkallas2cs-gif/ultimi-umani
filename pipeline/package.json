@@ -1,0 +1,9 @@
+{
+  "name": "ultimi-umani-pipeline",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@vercel/blob": "0.24.1",
+    "playwright": "1.47.2"
+  }
+}
